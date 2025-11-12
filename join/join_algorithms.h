@@ -9,7 +9,8 @@ typedef struct HashNode {
 
 #define HASH_SIZE 100003
 
-long nested_loop_join(int show_progress);
-long hash_join(void);
+long disk_nested_loop_join(const char *customer_file, const char *order_file, int show_progress);
+long disk_block_nested_loop_join(const char *customer_file, const char *order_file, int buffer_blocks);
+long disk_hash_join(const char *customer_file, const char *order_file);
 
 #endif

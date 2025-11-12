@@ -2,9 +2,9 @@ CC=gcc
 CFLAGS=-O2 -Wall -std=c11
 
 # 소스 파일
-SOURCES=test.c data_loader.c join_algorithms.c
+SOURCES=test.c join_algorithms.c disk_reader.c
 OBJECTS=$(SOURCES:.c=.o)
-HEADERS=data_loader.h join_algorithms.h
+HEADERS=join_algorithms.h disk_reader.h
 
 OUT=test
 
