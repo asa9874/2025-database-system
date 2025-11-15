@@ -55,17 +55,18 @@ int disk_reader_read_customer(DiskReader *reader, CustomerRecord *record) {
         return 0;
     }
     
-    static long last_io = -1;
     long current_pos = ftell(reader->file);
-    if (last_io == -1 || current_pos / BLOCK_SIZE != last_io / BLOCK_SIZE) {
-        total_io_count++;
-        last_io = current_pos;
+    long current_block = current_pos / BLOCK_SIZE;
+    if (reader->current_block != current_block) {
+        __sync_fetch_and_add(&total_io_count, 1);
+        reader->current_block = current_block;
     }
     
-    char *token = strtok(line, "|");
+    char *saveptr;
+    char *token = strtok_r(line, "|", &saveptr);
     if (token) record->custkey = atol(token);
     
-    token = strtok(NULL, "|");
+    token = strtok_r(NULL, "|", &saveptr);
     if (token) {
         strncpy(record->name, token, 25);
         record->name[25] = '\0';
@@ -81,22 +82,26 @@ int disk_reader_read_order(DiskReader *reader, OrderRecord *record) {
         return 0;
     }
     
-    static long last_io = -1;
     long current_pos = ftell(reader->file);
-    if (last_io == -1 || current_pos / BLOCK_SIZE != last_io / BLOCK_SIZE) {
-        total_io_count++;
-        last_io = current_pos;
+    long current_block = current_pos / BLOCK_SIZE;
+    if (reader->current_block != current_block) {
+        __sync_fetch_and_add(&total_io_count, 1);
+        reader->current_block = current_block;
     }
     
-    char *token = strtok(line, "|");
+    char *saveptr;
+    char *token = strtok_r(line, "|", &saveptr);
     if (token) record->orderkey = atol(token);
     
-    token = strtok(NULL, "|");
+    token = strtok_r(NULL, "|", &saveptr);
     if (token) record->custkey = atol(token);
     
-    token = strtok(NULL, "|");
-    token = strtok(NULL, "|");
-    if (token) record->totalprice = atof(token);
+    token = strtok_r(NULL, "|", &saveptr);
+    token = strtok_r(NULL, "|", &saveptr);
+    if (token) {
+        char *endptr;
+        record->totalprice = strtod(token, &endptr);
+    }
     
     return 1;
 }

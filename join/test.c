@@ -56,16 +56,32 @@ void run_disk_block_nested_loop_join_test(const char *customer_file, const char 
     printf("    디스크 I/O 횟수: %ld회\n\n", io_count);
 }
 
+void run_disk_parallel_block_nested_loop_join_test(const char *customer_file, const char *order_file, int buffer_blocks) {
+    printf("[테스트 4: 병렬 블록 중첩 루프 조인 (Parallel Block NLJ, 버퍼=%d 블록, 4 스레드)]\n", buffer_blocks);
+    
+    disk_reader_reset_io_count();
+    double start = get_time_sec();
+    long result = disk_parallel_block_nested_loop_join(customer_file, order_file, buffer_blocks);
+    double end = get_time_sec();
+    long io_count = disk_reader_get_io_count();
+    
+    printf("  결과:\n");
+    printf("    매칭된 레코드: %ld개\n", result);
+    printf("    실행 시간: %.3f초\n", end - start);
+    printf("    디스크 I/O 횟수: %ld회\n\n", io_count);
+}
+
 int main() {
     const char *customer_file = "../tbl/customer.tbl";
     const char *order_file = "../tbl/orders.tbl";
 
-    printf("=== On-Disk JOIN 알고리즘 테스트 ===\n\n");
-    run_disk_block_nested_loop_join_test(customer_file, order_file, 100);
-    run_disk_block_nested_loop_join_test(customer_file, order_file, 50);
-    run_disk_block_nested_loop_join_test(customer_file, order_file, 10);
+    // printf("=== On-Disk JOIN 알고리즘 테스트 ===\n\n");
+    // run_disk_hash_join_test(customer_file, order_file);
+    // run_disk_block_nested_loop_join_test(customer_file, order_file, 100);
+    
+    printf("\n=== 병렬 처리 테스트 ===\n\n");
+    run_disk_parallel_block_nested_loop_join_test(customer_file, order_file, 100);
+    run_disk_parallel_block_nested_loop_join_test(customer_file, order_file, 50);
 
-    run_disk_nested_loop_join_test(customer_file, order_file);
-    run_disk_hash_join_test(customer_file, order_file);
     return 0;
 }

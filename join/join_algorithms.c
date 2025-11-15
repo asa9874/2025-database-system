@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include "join_algorithms.h"
 #include "disk_reader.h"
 
@@ -132,6 +133,164 @@ long disk_block_nested_loop_join(const char *customer_file, const char *order_fi
     disk_reader_close(order_reader);
     
     return result_count;
+}
+
+void* parallel_block_join_worker(void* arg) {
+    ThreadArg *thread_arg = (ThreadArg*)arg;
+    long result_count = 0;
+    
+    DiskReader *cust_reader = disk_reader_open(thread_arg->customer_file, "customer");
+    DiskReader *order_reader = disk_reader_open(thread_arg->order_file, "order");
+    
+    if (!cust_reader || !order_reader) {
+        fprintf(stderr, "[Thread %d] 파일 열기 실패\n", thread_arg->thread_id);
+        if (cust_reader) disk_reader_close(cust_reader);
+        if (order_reader) disk_reader_close(order_reader);
+        thread_arg->result_count = -1;
+        return NULL;
+    }
+    
+    int max_records = thread_arg->buffer_blocks * 200;
+    CustomerRecord *cust_buffer = (CustomerRecord *)malloc(sizeof(CustomerRecord) * max_records);
+    OrderRecord *order_buffer = (OrderRecord *)malloc(sizeof(OrderRecord) * max_records);
+    
+    if (!cust_buffer || !order_buffer) {
+        fprintf(stderr, "[Thread %d] 버퍼 할당 실패\n", thread_arg->thread_id);
+        free(cust_buffer);
+        free(order_buffer);
+        disk_reader_close(cust_reader);
+        disk_reader_close(order_reader);
+        thread_arg->result_count = -1;
+        return NULL;
+    }
+    
+    // start_line까지 스킵
+    CustomerRecord temp;
+    for (long i = 0; i < thread_arg->start_line; i++) {
+        if (!disk_reader_read_customer(cust_reader, &temp)) {
+            break;
+        }
+    }
+    
+    long current_line = thread_arg->start_line;
+    int cust_count;
+    long initial_io;
+    
+    printf("[Thread %d] 시작: 라인 %ld ~ %ld\n", 
+           thread_arg->thread_id, thread_arg->start_line, thread_arg->end_line);
+    
+    while (current_line < thread_arg->end_line) {
+        cust_count = 0;
+        initial_io = disk_reader_get_io_count();
+        
+        // Customer 블록 읽기
+        while (cust_count < max_records && current_line < thread_arg->end_line) {
+            if (!disk_reader_read_customer(cust_reader, &cust_buffer[cust_count])) {
+                break;
+            }
+            cust_count++;
+            current_line++;
+            
+            if (disk_reader_get_io_count() - initial_io >= thread_arg->buffer_blocks) {
+                break;
+            }
+        }
+        
+        if (cust_count == 0) break;
+        
+        disk_reader_reset(order_reader);
+        
+        // Orders 전체 스캔
+        int order_count;
+        while (1) {
+            order_count = 0;
+            initial_io = disk_reader_get_io_count();
+            
+            while (order_count < max_records) {
+                if (!disk_reader_read_order(order_reader, &order_buffer[order_count])) {
+                    break;
+                }
+                order_count++;
+                
+                if (disk_reader_get_io_count() - initial_io >= thread_arg->buffer_blocks) {
+                    break;
+                }
+            }
+            
+            if (order_count == 0) break;
+            
+            // 조인 수행
+            for (int i = 0; i < cust_count; i++) {
+                for (int j = 0; j < order_count; j++) {
+                    if (cust_buffer[i].custkey == order_buffer[j].custkey) {
+                        result_count++;
+                    }
+                }
+            }
+        }
+    }
+    
+    printf("[Thread %d] 완료: %ld건 매칭\n", thread_arg->thread_id, result_count);
+    
+    free(cust_buffer);
+    free(order_buffer);
+    disk_reader_close(cust_reader);
+    disk_reader_close(order_reader);
+    
+    thread_arg->result_count = result_count;
+    return NULL;
+}
+
+long disk_parallel_block_nested_loop_join(const char *customer_file, const char *order_file, int buffer_blocks) {
+    // Customer 파일의 총 라인 수 계산
+    FILE *fp = fopen(customer_file, "r");
+    if (!fp) {
+        perror("fopen");
+        return -1;
+    }
+    
+    long total_lines = 0;
+    char ch;
+    while ((ch = fgetc(fp)) != EOF) {
+        if (ch == '\n') total_lines++;
+    }
+    fclose(fp);
+    
+    printf("총 Customer 레코드: %ld개\n", total_lines);
+    printf("4개 스레드로 병렬 처리 시작...\n\n");
+    
+    // 각 스레드의 작업 범위 계산
+    long chunk_size = total_lines / NUM_THREADS;
+    
+    pthread_t threads[NUM_THREADS];
+    ThreadArg thread_args[NUM_THREADS];
+    
+    for (int i = 0; i < NUM_THREADS; i++) {
+        thread_args[i].customer_file = customer_file;
+        thread_args[i].order_file = order_file;
+        thread_args[i].buffer_blocks = buffer_blocks;
+        thread_args[i].start_line = i * chunk_size;
+        thread_args[i].end_line = (i == NUM_THREADS - 1) ? total_lines : (i + 1) * chunk_size;
+        thread_args[i].result_count = 0;
+        thread_args[i].thread_id = i + 1;
+        
+        if (pthread_create(&threads[i], NULL, parallel_block_join_worker, &thread_args[i]) != 0) {
+            fprintf(stderr, "Thread %d 생성 실패\n", i + 1);
+            return -1;
+        }
+    }
+    
+    // 모든 스레드 완료 대기
+    long total_result = 0;
+    for (int i = 0; i < NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+        if (thread_args[i].result_count >= 0) {
+            total_result += thread_args[i].result_count;
+        }
+    }
+    
+    printf("\n병렬 처리 완료!\n");
+    return total_result;
 }
 
 long disk_hash_join(const char *customer_file, const char *order_file) {
