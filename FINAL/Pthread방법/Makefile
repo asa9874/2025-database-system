@@ -1,0 +1,26 @@
+CC=gcc
+CFLAGS=-O2 -Wall -std=c11 -pthread
+LDFLAGS=-pthread
+
+SOURCES=test_disk_save_flexible.c join_algorithms.c disk_reader.c disk_save.c
+OBJECTS=$(SOURCES:.c=.o)
+HEADERS=join_algorithms.h disk_reader.h disk_save.h
+
+OUT=test_flexible
+
+.PHONY: all clean run
+
+all: $(OUT)
+
+$(OUT): $(OBJECTS)
+	$(CC) $(CFLAGS) -o $(OUT) $(OBJECTS) $(LDFLAGS)
+
+%.o: %.c $(HEADERS)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+THREADS?=4
+run: all
+	./$(OUT) $(THREADS)
+
+clean:
+	rm -f $(OUT) $(OBJECTS)
