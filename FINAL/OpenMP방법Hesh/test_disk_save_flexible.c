@@ -6,9 +6,9 @@
 #include "disk_reader.h"
 
 int main(int argc, char *argv[]) {
-    const char *customer_file = "/home/system/data/tbl/customer.tbl";
-    const char *order_file = "/home/system/data/tbl/orders.tbl";
-    const char *output_file = "/home/system/databasesystem/join/join_results.txt";
+    const char *customer_file = "../tbl/customer.tbl";
+    const char *order_file = "../tbl/orders.tbl";
+    const char *output_file = "./join_results.txt";
     int buffer_blocks = 100;  // I/O 증가를 위한 작은 버퍼
     int num_threads = 4;  // 기본값
     
