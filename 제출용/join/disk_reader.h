@@ -3,7 +3,6 @@
 
 #include <stdio.h>
 
-#define BLOCK_SIZE (10 * 1024 * 1024) 
 #define RECORDS_PER_BLOCK 100
 
 typedef struct {
@@ -31,7 +30,9 @@ typedef struct {
 
 typedef struct {
     FILE *file;
-    char buffer[BLOCK_SIZE];
+    char *buffer;
+    int buffer_size;
+    int block_size;
     int buffer_valid;
     long current_block;
     long total_blocks;
@@ -39,7 +40,7 @@ typedef struct {
     int current_record;
 } DiskReader;
 
-DiskReader* disk_reader_open(const char *filename, const char *type);
+DiskReader* disk_reader_open(const char *filename, const char *type, int block_size);
 int disk_reader_read_customer(DiskReader *reader, CustomerRecord *record);
 int disk_reader_read_order(DiskReader *reader, OrderRecord *record);
 void disk_reader_reset(DiskReader *reader);

@@ -17,7 +17,7 @@ static long total_io_count = 0;
 // 1. 디스크 리더 생성 및 초기화
 // ========================================
 
-DiskReader* disk_reader_open(const char *filename, const char *type) {
+DiskReader* disk_reader_open(const char *filename, const char *type, int block_size) {
     // 파일 열기 및 DiskReader 구조체 초기화
     DiskReader *reader = (DiskReader *)malloc(sizeof(DiskReader));
     if (!reader) {
@@ -32,6 +32,17 @@ DiskReader* disk_reader_open(const char *filename, const char *type) {
         return NULL;
     }
 
+    // 블록 크기 설정 및 버퍼 할당
+    reader->block_size = block_size;
+    reader->buffer_size = block_size * 1.2;
+    reader->buffer = (char *)malloc(reader->buffer_size);
+    if (!reader->buffer) {
+        fprintf(stderr, "버퍼 메모리 할당 실패\n");
+        fclose(reader->file);
+        free(reader);
+        return NULL;
+    }
+
     // 초기 상태 설정
     reader->buffer_valid = 0;
     reader->current_block = 0;
@@ -39,34 +50,6 @@ DiskReader* disk_reader_open(const char *filename, const char *type) {
     reader->current_record = 0;
 
     return reader;
-}
-
-// ========================================
-// 2. 블록 단위 데이터 로딩 (내부 함수)
-// ========================================
-
-static int load_block(DiskReader *reader) {
-    // 블록 단위로 파일에서 데이터 읽기
-    size_t bytes_read = fread(reader->buffer, 1, BLOCK_SIZE, reader->file);
-    if (bytes_read == 0) {
-        return 0;  // 읽을 데이터 없음
-    }
-
-    // I/O 카운트 증가 및 상태 업데이트
-    total_io_count++;
-    reader->buffer_valid = 1;
-    reader->current_block++;
-    reader->current_record = 0;
-    reader->records_in_buffer = 0;
-
-    // 버퍼 내 레코드 수 계산 (줄바꿈 기준)
-    for (size_t i = 0; i < bytes_read; i++) {
-        if (reader->buffer[i] == '\n') {
-            reader->records_in_buffer++;
-        }
-    }
-
-    return 1;
 }
 
 // ========================================
@@ -83,7 +66,7 @@ int disk_reader_read_customer(DiskReader *reader, CustomerRecord *record) {
 
     // I/O 블록 경계 체크 및 카운트
     long current_pos = ftell(reader->file);
-    long current_block = current_pos / BLOCK_SIZE;
+    long current_block = current_pos / reader->block_size;
     if (reader->current_block != current_block) {
         __sync_fetch_and_add(&total_io_count, 1);
         reader->current_block = current_block;
@@ -160,7 +143,7 @@ int disk_reader_read_order(DiskReader *reader, OrderRecord *record) {
 
     // I/O 블록 경계 체크 및 카운트
     long current_pos = ftell(reader->file);
-    long current_block = current_pos / BLOCK_SIZE;
+    long current_block = current_pos / reader->block_size;
     if (reader->current_block != current_block) {
         __sync_fetch_and_add(&total_io_count, 1);
         reader->current_block = current_block;
@@ -247,6 +230,9 @@ void disk_reader_close(DiskReader *reader) {
     if (reader) {
         if (reader->file) {
             fclose(reader->file);  // 파일 닫기
+        }
+        if (reader->buffer) {
+            free(reader->buffer);  // 버퍼 메모리 해제
         }
         free(reader);  // 구조체 메모리 해제
     }

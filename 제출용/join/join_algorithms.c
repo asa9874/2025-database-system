@@ -20,8 +20,8 @@
 // - 해시 테이블을 통한 O(1) 탐색으로 빠른 조인 수행
 // ========================================
 
-long disk_parallel_block_nested_loop_join_hash_save(const char *customer_file, const char *order_file,
-                                                     int buffer_blocks, const char *output_file, int num_threads) {
+long disk_parallel_block_nested_loop_join_hash_save(const char *customer_file, const char *order_file, 
+                                                     int block_size, const char *output_file, int num_threads) {
     // ========================================
     // 1. 출력 파일 초기화 및 준비 단계
     // ========================================
@@ -79,8 +79,8 @@ long disk_parallel_block_nested_loop_join_hash_save(const char *customer_file, c
         // 3.2 파일 및 메모리 리소스 초기화
         // ========================================
         // 각 스레드별 독립적인 파일 리더 생성 (공유 스캔 아키텍처)
-        DiskReader *cust_reader = disk_reader_open(customer_file, "customer");
-        DiskReader *order_reader = disk_reader_open(order_file, "order");
+        DiskReader *cust_reader = disk_reader_open(customer_file, "customer", block_size);
+        DiskReader *order_reader = disk_reader_open(order_file, "order", block_size);
 
         if (!cust_reader || !order_reader) {
             fprintf(stderr, "[Thread %d] 파일 열기 실패\n", thread_id);
@@ -90,10 +90,11 @@ long disk_parallel_block_nested_loop_join_hash_save(const char *customer_file, c
         }
 
         // 메모리 버퍼 할당 (블록 단위 I/O를 위한)
-        // buffer_blocks * 200: 각 블록당 약 200개 레코드 가정
-        int max_records = buffer_blocks * 200;
-        CustomerRecord *cust_buffer = (CustomerRecord *)malloc(sizeof(CustomerRecord) * max_records);
-        OrderRecord *order_buffer = (OrderRecord *)malloc(sizeof(OrderRecord) * max_records);
+        // block_size에 따른 최대 레코드 수 계산
+        int max_cust_records = block_size / sizeof(CustomerRecord);
+        int max_order_records = block_size / sizeof(OrderRecord);
+        CustomerRecord *cust_buffer = (CustomerRecord *)malloc(sizeof(CustomerRecord) * max_cust_records);
+        OrderRecord *order_buffer = (OrderRecord *)malloc(sizeof(OrderRecord) * max_order_records);
 
         if (!cust_buffer || !order_buffer) {
             fprintf(stderr, "[Thread %d] 버퍼 할당 실패\n", thread_id);
@@ -156,14 +157,14 @@ long disk_parallel_block_nested_loop_join_hash_save(const char *customer_file, c
             initial_io = disk_reader_get_io_count();
 
             // Customer 블록 읽기: 메모리 버퍼 크기 또는 I/O 블록 제한까지
-            while (cust_count < max_records && current_line < end_line) {
+            while (cust_count < max_cust_records && current_line < end_line) {
                 if (!disk_reader_read_customer(cust_reader, &cust_buffer[cust_count])) {
                     break;
                 }
                 cust_count++;
                 current_line++;
 
-                if (disk_reader_get_io_count() - initial_io >= buffer_blocks) {
+                if (disk_reader_get_io_count() - initial_io >= 1) {
                     break;
                 }
             }
@@ -197,13 +198,13 @@ long disk_parallel_block_nested_loop_join_hash_save(const char *customer_file, c
                 initial_io = disk_reader_get_io_count();
 
                 // Order 블록 읽기
-                while (order_count < max_records) {
+                while (order_count < max_order_records) {
                     if (!disk_reader_read_order(order_reader, &order_buffer[order_count])) {
                         break;
                     }
                     order_count++;
 
-                    if (disk_reader_get_io_count() - initial_io >= buffer_blocks) {
+                    if (disk_reader_get_io_count() - initial_io >= 1) {
                         break;
                     }
                 }

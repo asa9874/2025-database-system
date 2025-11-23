@@ -6,7 +6,7 @@ SOURCES=run.c join_algorithms.c disk_reader.c disk_save.c
 OBJECTS=$(SOURCES:.c=.o)
 HEADERS=join_algorithms.h disk_reader.h disk_save.h
 
-OUT=test_flexible
+OUT=run.out
 
 .PHONY: all clean run
 
