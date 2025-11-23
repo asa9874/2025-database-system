@@ -8,7 +8,7 @@ echo "블록 사이즈 벤치마크 시작"
 echo "========================================"
 
 # 블록 사이즈 리스트 (MB)
-block_sizes_mb=(50 100 200 500 1000 2000 5000 7000)
+block_sizes_mb=(50 100 200 500 1000 2000 3000 4000 5000 6000 7000)
 
 # 결과 파일
 output_file="benchmark_results.csv"
@@ -17,9 +17,6 @@ echo "BlockSize_MB,AvgTime_sec" > "$output_file"
 for size_mb in "${block_sizes_mb[@]}"; do
     echo "블록 사이즈: ${size_mb}MB 테스트 중..."
     
-    # 바이트로 변환
-    size_bytes=$((size_mb * 1024 * 1024))
-    
     # 5번 실행하여 시간 측정
     times=()
     for i in {1..5}; do
@@ -27,7 +24,7 @@ for size_mb in "${block_sizes_mb[@]}"; do
         
         # 실행 시간 측정 (실제 시간만)
         start_time=$(date +%s.%N)
-        ./test_flexible 4 $size_bytes > /dev/null 2>&1
+        ./run.out 8 $size_mb > /dev/null 2>&1
         exit_code=$?
         end_time=$(date +%s.%N)
         
