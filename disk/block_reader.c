@@ -7,10 +7,10 @@
 // 전역 I/O 카운터 (멀티스레드 환경용)
 static long global_io_count = 0;
 
-BlockReader* block_reader_open(const char *filename) {
-    BlockReader *reader = (BlockReader *)malloc(sizeof(BlockReader));
+DiskReader* disk_reader_open(const char *filename) {
+    DiskReader *reader = (DiskReader *)malloc(sizeof(DiskReader));
     if (!reader) {
-        fprintf(stderr, "BlockReader 메모리 할당 실패\n");
+        fprintf(stderr, "DiskReader 메모리 할당 실패\n");
         return NULL;
     }
     
@@ -32,7 +32,7 @@ BlockReader* block_reader_open(const char *filename) {
     return reader;
 }
 
-void block_reader_close(BlockReader *reader) {
+void disk_reader_close(DiskReader *reader) {
     if (reader) {
         if (reader->file) {
             fclose(reader->file);
@@ -42,7 +42,7 @@ void block_reader_close(BlockReader *reader) {
 }
 
 // 블록 단위로 데이터를 버퍼에 로드
-static int load_block(BlockReader *reader) {
+static int load_block(DiskReader *reader) {
     reader->buffer_size = fread(reader->buffer, 1, BLOCK_SIZE, reader->file);
     if (reader->buffer_size == 0) {
         return 0;  // 파일 끝
@@ -57,7 +57,7 @@ static int load_block(BlockReader *reader) {
 }
 
 // 버퍼에서 한 줄(레코드)을 읽기 (가변 길이 레코드 처리)
-static int read_line(BlockReader *reader, char *line, int max_size) {
+static int read_line(DiskReader *reader, char *line, int max_size) {
     int line_idx = 0;
     
     while (line_idx < max_size - 1) {
@@ -88,7 +88,7 @@ static int read_line(BlockReader *reader, char *line, int max_size) {
 }
 
 // Customer 레코드 파싱 및 읽기
-int block_reader_read_customer(BlockReader *reader, CustomerRecord *record) {
+int disk_reader_read_customer(DiskReader *reader, CustomerRecord *record) {
     char line[MAX_LINE_SIZE];
     
     if (!read_line(reader, line, MAX_LINE_SIZE)) {
@@ -97,7 +97,7 @@ int block_reader_read_customer(BlockReader *reader, CustomerRecord *record) {
     
     // 빈 줄 처리
     if (strlen(line) == 0) {
-        return block_reader_read_customer(reader, record);
+        return disk_reader_read_customer(reader, record);
     }
     
     // "|" 구분자로 파싱
@@ -121,7 +121,7 @@ int block_reader_read_customer(BlockReader *reader, CustomerRecord *record) {
 }
 
 // Order 레코드 파싱 및 읽기
-int block_reader_read_order(BlockReader *reader, OrderRecord *record) {
+int disk_reader_read_order(DiskReader *reader, OrderRecord *record) {
     char line[MAX_LINE_SIZE];
     
     if (!read_line(reader, line, MAX_LINE_SIZE)) {
@@ -130,7 +130,7 @@ int block_reader_read_order(BlockReader *reader, OrderRecord *record) {
     
     // 빈 줄 처리
     if (strlen(line) == 0) {
-        return block_reader_read_order(reader, record);
+        return disk_reader_read_order(reader, record);
     }
     
     // "|" 구분자로 파싱
@@ -165,7 +165,7 @@ int block_reader_read_order(BlockReader *reader, OrderRecord *record) {
 }
 
 // 파일 포인터를 처음으로 리셋
-void block_reader_reset(BlockReader *reader) {
+void disk_reader_reset(DiskReader *reader) {
     fseek(reader->file, 0, SEEK_SET);
     reader->buffer_size = 0;
     reader->buffer_pos = 0;
@@ -176,18 +176,18 @@ void block_reader_reset(BlockReader *reader) {
 }
 
 // I/O 통계 함수들
-long block_reader_get_io_count(BlockReader *reader) {
+long disk_reader_get_io_count(DiskReader *reader) {
     return reader->total_io_count;
 }
 
-void block_reader_reset_io_count(BlockReader *reader) {
+void disk_reader_reset_io_count(DiskReader *reader) {
     reader->total_io_count = 0;
 }
 
-long block_reader_get_global_io_count(void) {
+long disk_reader_get_global_io_count(void) {
     return global_io_count;
 }
 
-void block_reader_reset_global_io_count(void) {
+void disk_reader_reset_global_io_count(void) {
     global_io_count = 0;
 }

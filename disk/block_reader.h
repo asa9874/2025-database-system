@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 
-#define BLOCK_SIZE 4096
+#define BLOCK_SIZE 65536  // 64KB
 #define MAX_LINE_SIZE 512
 
 typedef struct {
@@ -26,25 +26,25 @@ typedef struct {
     long total_io_count;    // 총 I/O 횟수
     char line_buffer[MAX_LINE_SIZE];  // 레코드 조립용 버퍼
     int line_pos;           // line_buffer 내 위치
-} BlockReader;
+} DiskReader;
 
-// BlockReader 생성 및 해제
-BlockReader* block_reader_open(const char *filename);
-void block_reader_close(BlockReader *reader);
+// DiskReader 생성 및 해제
+DiskReader* disk_reader_open(const char *filename);
+void disk_reader_close(DiskReader *reader);
 
 // 레코드 읽기 함수
-int block_reader_read_customer(BlockReader *reader, CustomerRecord *record);
-int block_reader_read_order(BlockReader *reader, OrderRecord *record);
+int disk_reader_read_customer(DiskReader *reader, CustomerRecord *record);
+int disk_reader_read_order(DiskReader *reader, OrderRecord *record);
 
 // 파일 포인터 리셋
-void block_reader_reset(BlockReader *reader);
+void disk_reader_reset(DiskReader *reader);
 
 // I/O 통계
-long block_reader_get_io_count(BlockReader *reader);
-void block_reader_reset_io_count(BlockReader *reader);
+long disk_reader_get_io_count(DiskReader *reader);
+void disk_reader_reset_io_count(DiskReader *reader);
 
 // 전역 I/O 카운터 (멀티스레드용)
-long block_reader_get_global_io_count(void);
-void block_reader_reset_global_io_count(void);
+long disk_reader_get_global_io_count(void);
+void disk_reader_reset_global_io_count(void);
 
 #endif
