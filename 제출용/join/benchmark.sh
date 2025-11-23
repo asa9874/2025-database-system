@@ -8,7 +8,7 @@ echo "블록 사이즈 벤치마크 시작"
 echo "========================================"
 
 # 블록 사이즈 리스트 (MB)
-block_sizes_mb=(175 200)
+block_sizes_mb=(205)
 
 # 결과 파일
 output_file="benchmark_results.csv"
@@ -39,36 +39,56 @@ for size_mb in "${block_sizes_mb[@]}"; do
         echo "  수행 시간: ${elapsed}초"
     done
     
-    # 통계 계산 및 이상치 제거
+    # 통계 계산 및 이상치 제거 (중간값 기준)
     if [ ${#times[@]} -lt 3 ]; then
         echo "  실행 샘플 부족 - 평균 계산 불가"
         avg_time="N/A"
         std_dev="N/A"
         valid_count=0
     else
-        # 1단계: 평균 계산
-        sum=0
+        # 1단계: 데이터 정렬
+        IFS=$'\n' sorted_times=($(sort -n <<<"${times[*]}"))
+        unset IFS
+        
+        # 2단계: 중간값(Median) 계산
+        count=${#sorted_times[@]}
+        mid=$((count / 2))
+        if [ $((count % 2)) -eq 1 ]; then
+            # 홀수 개: 중간값
+            median=${sorted_times[$mid]}
+        else
+            # 짝수 개: 중간 두 값의 평균
+            median=$(echo "scale=6; (${sorted_times[$mid-1]} + ${sorted_times[$mid]}) / 2" | bc)
+        fi
+        
+        echo "  정렬된 데이터: ${sorted_times[*]}"
+        echo "  중간값: ${median}초"
+        
+        # 3단계: MAD (Median Absolute Deviation) 계산
+        abs_devs=()
         for t in "${times[@]}"; do
-            sum=$(echo "$sum + $t" | bc)
+            abs_dev=$(echo "scale=6; if ($t - $median >= 0) $t - $median else $median - $t" | bc)
+            abs_devs+=($abs_dev)
         done
-        mean=$(echo "scale=6; $sum / ${#times[@]}" | bc)
+        IFS=$'\n' sorted_abs_devs=($(sort -n <<<"${abs_devs[*]}"))
+        unset IFS
         
-        # 2단계: 표준편차 계산
-        sum_sq_diff=0
-        for t in "${times[@]}"; do
-            diff=$(echo "$t - $mean" | bc)
-            sq_diff=$(echo "$diff * $diff" | bc)
-            sum_sq_diff=$(echo "$sum_sq_diff + $sq_diff" | bc)
-        done
-        variance=$(echo "scale=6; $sum_sq_diff / ${#times[@]}" | bc)
-        std_dev=$(echo "scale=6; sqrt($variance)" | bc)
+        mad_mid=$((${#sorted_abs_devs[@]} / 2))
+        if [ $((${#sorted_abs_devs[@]} % 2)) -eq 1 ]; then
+            mad=${sorted_abs_devs[$mad_mid]}
+        else
+            mad=$(echo "scale=6; (${sorted_abs_devs[$mad_mid-1]} + ${sorted_abs_devs[$mad_mid]}) / 2" | bc)
+        fi
         
-        echo "  초기 평균: ${mean}초, 표준편차: ${std_dev}초"
+        # 4단계: 이상치 제거 (중간값 ± 2.5 * MAD 범위)
+        # MAD를 표준편차로 변환: std ≈ 1.4826 * MAD
+        std_dev=$(echo "scale=6; 1.4826 * $mad" | bc)
+        threshold=$(echo "scale=6; 2.5 * $std_dev" | bc)
+        lower_bound=$(echo "$median - $threshold" | bc)
+        upper_bound=$(echo "$median + $threshold" | bc)
         
-        # 3단계: 이상치 제거 (평균 ± 2*표준편차 범위 밖의 값 제거)
-        threshold=$(echo "scale=6; 2 * $std_dev" | bc)
-        lower_bound=$(echo "$mean - $threshold" | bc)
-        upper_bound=$(echo "$mean + $threshold" | bc)
+        echo "  표준편차(추정): ${std_dev}초"
+        echo "  유효 범위: [${lower_bound}, ${upper_bound}]초"
         
         filtered_times=()
         for t in "${times[@]}"; do
@@ -80,10 +100,10 @@ for size_mb in "${block_sizes_mb[@]}"; do
             fi
         done
         
-        # 4단계: 필터링된 데이터로 최종 평균 계산
+        # 5단계: 필터링된 데이터로 최종 평균 계산
         if [ ${#filtered_times[@]} -eq 0 ]; then
-            echo "  모든 데이터가 이상치로 판단됨 - 원본 평균 사용"
-            avg_time=$(echo "scale=2; $mean" | bc)
+            echo "  모든 데이터가 이상치로 판단됨 - 중간값 사용"
+            avg_time=$(echo "scale=2; $median" | bc)
             valid_count=${#times[@]}
         else
             sum=0
