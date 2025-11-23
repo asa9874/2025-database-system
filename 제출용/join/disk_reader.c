@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,7 +25,7 @@ DiskReader* disk_reader_open(const char *filename, const char *type, int block_s
         return NULL;
     }
 
-    reader->file = fopen(filename, "r");
+    reader->file = fopen(filename, "rb");  // 바이너리 모드로 열기
     if (!reader->file) {
         perror("파일 열기 실패");
         free(reader);
@@ -48,28 +48,81 @@ DiskReader* disk_reader_open(const char *filename, const char *type, int block_s
     reader->current_block = 0;
     reader->records_in_buffer = 0;
     reader->current_record = 0;
+    memset(reader->buffer, 0, reader->buffer_size);
 
     return reader;
 }
 
 // ========================================
-// 3. Customer 레코드 읽기 및 파싱
+// 2. 블록 단위 데이터 로딩 (내부 함수)
+// ========================================
+
+static int load_block(DiskReader *reader) {
+    // 블록 단위로 파일에서 데이터 읽기
+    size_t bytes_read = fread(reader->buffer, 1, reader->block_size, reader->file);
+    if (bytes_read == 0) {
+        return 0;  // 읽을 데이터 없음
+    }
+
+    // I/O 카운트 증가 및 상태 업데이트
+    __sync_fetch_and_add(&total_io_count, 1);  // 원자적 증가
+    reader->buffer_valid = 1;
+    reader->current_block++;
+    reader->current_record = 0;
+    reader->records_in_buffer = bytes_read;
+
+    return 1;
+}
+
+// ========================================
+// 3. 버퍼에서 한 줄 읽기 (내부 함수)
+// ========================================
+
+static int read_line(DiskReader *reader, char *line, int max_size) {
+    int line_idx = 0;
+    
+    while (line_idx < max_size - 1) {
+        // 버퍼가 비었으면 새 블록 로드
+        if (reader->current_record >= reader->records_in_buffer) {
+            if (!load_block(reader)) {
+                // 파일 끝: 버퍼에 남은 데이터 처리
+                if (line_idx > 0) {
+                    line[line_idx] = '\0';
+                    return 1;
+                }
+                return 0;
+            }
+        }
+        
+        char ch = reader->buffer[reader->current_record++];
+        
+        if (ch == '\n') {
+            line[line_idx] = '\0';
+            return 1;
+        }
+        
+        line[line_idx++] = ch;
+    }
+    
+    line[max_size - 1] = '\0';
+    return 1;
+}
+
+// ========================================
+// 4. Customer 레코드 읽기 및 파싱
 // ========================================
 
 int disk_reader_read_customer(DiskReader *reader, CustomerRecord *record) {
     char line[512];
 
-    // 파일에서 한 줄 읽기
-    if (fgets(line, sizeof(line), reader->file) == NULL) {
-        return 0;  // EOF 또는 오류
+    // 블록 버퍼에서 한 줄 읽기
+    if (!read_line(reader, line, sizeof(line))) {
+        return 0;  // EOF
     }
 
-    // I/O 블록 경계 체크 및 카운트
-    long current_pos = ftell(reader->file);
-    long current_block = current_pos / reader->block_size;
-    if (reader->current_block != current_block) {
-        __sync_fetch_and_add(&total_io_count, 1);
-        reader->current_block = current_block;
+    // 빈 줄 처리
+    if (strlen(line) == 0) {
+        return disk_reader_read_customer(reader, record);
     }
 
     // ========================================
@@ -130,23 +183,20 @@ int disk_reader_read_customer(DiskReader *reader, CustomerRecord *record) {
 }
 
 // ========================================
-// 4. Order 레코드 읽기 및 파싱
+// 5. Order 레코드 읽기 및 파싱
 // ========================================
 
 int disk_reader_read_order(DiskReader *reader, OrderRecord *record) {
     char line[512];
 
-    // 파일에서 한 줄 읽기
-    if (fgets(line, sizeof(line), reader->file) == NULL) {
-        return 0;  // EOF 또는 오류
+    // 블록 버퍼에서 한 줄 읽기
+    if (!read_line(reader, line, sizeof(line))) {
+        return 0;  // EOF
     }
 
-    // I/O 블록 경계 체크 및 카운트
-    long current_pos = ftell(reader->file);
-    long current_block = current_pos / reader->block_size;
-    if (reader->current_block != current_block) {
-        __sync_fetch_and_add(&total_io_count, 1);
-        reader->current_block = current_block;
+    // 빈 줄 처리
+    if (strlen(line) == 0) {
+        return disk_reader_read_order(reader, record);
     }
 
     // ========================================
@@ -208,7 +258,7 @@ int disk_reader_read_order(DiskReader *reader, OrderRecord *record) {
 }
 
 // ========================================
-// 5. 파일 포인터 리셋 (재스캔용)
+// 6. 파일 포인터 리셋 (재스캔용)
 // ========================================
 
 void disk_reader_reset(DiskReader *reader) {
@@ -220,10 +270,11 @@ void disk_reader_reset(DiskReader *reader) {
     reader->current_block = 0;
     reader->records_in_buffer = 0;
     reader->current_record = 0;
+    memset(reader->buffer, 0, reader->buffer_size);
 }
 
 // ========================================
-// 6. 리소스 정리
+// 7. 리소스 정리
 // ========================================
 
 void disk_reader_close(DiskReader *reader) {
@@ -239,7 +290,7 @@ void disk_reader_close(DiskReader *reader) {
 }
 
 // ========================================
-// 7. I/O 카운트 조회 및 관리
+// 8. I/O 카운트 조회 및 관리
 // ========================================
 
 long disk_reader_get_io_count(void) {

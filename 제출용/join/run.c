@@ -6,8 +6,8 @@
 #include "disk_reader.h"
 
 int main(int argc, char *argv[]) {
-    const char *customer_file = "../tbl/customer.tbl";
-    const char *order_file = "../tbl/orders.tbl";
+    const char *customer_file = "../../tbl/customer.tbl";
+    const char *order_file = "../../tbl/orders.tbl";
     const char *output_file = "./join_results.txt";
     int block_size_mb = 16;  // 기본 블록 크기 16MB
     int num_threads = 8;  // 기본값

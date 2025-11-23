@@ -24,3 +24,5 @@ run: all
 
 clean:
 	rm -f $(OUT) $(OBJECTS)
+	rm -f join_results.txt
+	rm -f benchmark_*.txt benchmark_*.log
