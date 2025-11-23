@@ -2,24 +2,24 @@
 
 CC = gcc
 CFLAGS = -std=c99 -Wall -Wextra -g
-TARGET = test
-OBJS = test.o disk.o
+TARGET2 = test_block_reader
+OBJS2 = block_reader.o test_block_reader.o
 
-all: $(TARGET)
+all: $(TARGET2)
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
+$(TARGET2): $(OBJS2)
+	$(CC) $(CFLAGS) -pthread -o $(TARGET2) $(OBJS2)
 
-test.o: test.c disk.h
-	$(CC) $(CFLAGS) -c test.c
+block_reader.o: block_reader.c block_reader.h
+	$(CC) $(CFLAGS) -c block_reader.c
 
-disk.o: disk.c disk.h
-	$(CC) $(CFLAGS) -c disk.c
+test_block_reader.o: test_block_reader.c block_reader.h
+	$(CC) $(CFLAGS) -c test_block_reader.c
 
 clean:
-	rm -f $(TARGET) $(OBJS)
+	rm -f $(TARGET2) $(OBJS2)
 
-run: $(TARGET)
-	./$(TARGET)
+test_block: $(TARGET2)
+	./$(TARGET2)
 
-.PHONY: all clean run
+.PHONY: all clean test_block
