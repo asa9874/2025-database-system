@@ -8,7 +8,7 @@ echo "블록 사이즈 벤치마크 시작"
 echo "========================================"
 
 # 블록 사이즈 리스트 (MB)
-block_sizes_mb=(205)
+block_sizes_mb=(193 197)
 
 # 결과 파일
 output_file="benchmark_results.csv"
